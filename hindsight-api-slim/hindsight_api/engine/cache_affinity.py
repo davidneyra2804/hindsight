@@ -202,9 +202,7 @@ def apply_opencode_session(
     the request goes out unchanged.
     """
     hostname = (urlparse(base_url).hostname or "") if base_url else ""
-    host_matches = bool(hostname) and any(
-        _host_matches(hostname, domain) for domain in _OPENCODE_DOMAINS
-    )
+    host_matches = bool(hostname) and any(_host_matches(hostname, domain) for domain in _OPENCODE_DOMAINS)
     if not host_matches:
         return
     session_id = cache_affinity_id(request.get("messages"))

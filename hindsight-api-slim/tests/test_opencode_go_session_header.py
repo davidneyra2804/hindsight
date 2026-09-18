@@ -357,9 +357,7 @@ async def test_openai_responses_call_with_tools_sends_session_header_when_target
         traced_operation("trace-muse-tools"),
         patch("hindsight_api.engine.providers.openai_responses_llm.get_metrics_collector"),
     ):
-        await llm.call_with_tools(
-            messages=[{"role": "user", "content": "Hi"}], tools=[], max_retries=0
-        )
+        await llm.call_with_tools(messages=[{"role": "user", "content": "Hi"}], tools=[], max_retries=0)
 
     headers = create.call_args.kwargs.get("extra_headers") or {}
     assert headers.get(OPENCODE_SESSION_HEADER)
