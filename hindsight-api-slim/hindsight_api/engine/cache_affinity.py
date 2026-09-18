@@ -201,7 +201,14 @@ def apply_opencode_session(request: dict[str, Any], *, base_url: str | None) -> 
     hostname = (urlparse(base_url).hostname or "") if base_url else ""
     if not any(_host_matches(hostname, domain) for domain in _OPENCODE_DOMAINS):
         return
-    session_id = cache_affinity_id(request.get("messages"))
+    # The Responses API path uses ``input`` instead of ``messages``; accept
+    # either key. Without this, the verification probe at startup (which has
+    # no trace context to fall back on) gets no session id and opencode-go
+    # rejects it with HTTP 400 MissingSessionID.
+    messages = request.get("messages")
+    if messages is None:
+        messages = request.get("input")
+    session_id = cache_affinity_id(messages)
     if session_id is None:
         return
     extra_headers = request.setdefault("extra_headers", {})
@@ -223,7 +230,12 @@ def apply_cache_affinity(request: dict[str, Any], mode: CacheAffinityMode) -> No
     Never raises: when no id can be derived the request is left byte-identical
     to a pre-affinity one.
     """
-    affinity_id = cache_affinity_id(request.get("messages"))
+    # The Responses API path uses ``input`` instead of ``messages``; accept
+    # either key for consistency with ``apply_opencode_session``.
+    messages = request.get("messages")
+    if messages is None:
+        messages = request.get("input")
+    affinity_id = cache_affinity_id(messages)
     if affinity_id is None:
         return
 
