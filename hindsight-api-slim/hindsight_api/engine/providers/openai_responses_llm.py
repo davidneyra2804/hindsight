@@ -258,10 +258,15 @@ class OpenAIResponsesLLM(LLMInterface):
         """
         from urllib.parse import urlparse
 
-        from hindsight_api.engine.cache_affinity import _OPENCODE_DOMAINS, _host_matches
-
         hostname = (urlparse(self.base_url).hostname or "") if self.base_url else ""
-        return bool(hostname) and any(_host_matches(hostname, d) for d in _OPENCODE_DOMAINS)
+        # Inline host check — same shape as ``cache_affinity._host_matches``
+        # (exact match or ``.<domain>`` suffix) but kept here to avoid an import
+        # dependency on a constant that may not exist on every base branch.
+        # When the sibling ``cache_affinity`` helper grows a public constant,
+        # this can be replaced with a one-liner import.
+        if not hostname:
+            return False
+        return hostname == "opencode.ai" or hostname.endswith(".opencode.ai")
 
     def _supports_reasoning_model(self) -> bool:
         """Whether the model is an OpenAI reasoning model (gpt-5.x, o1, o3)."""
