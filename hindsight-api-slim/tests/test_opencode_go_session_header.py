@@ -237,6 +237,35 @@ def test_underivable_id_leaves_the_request_unchanged():
     assert "extra_headers" not in request
 
 
+def test_opencode_session_accepts_responses_api_input_key():
+    """The Responses API path uses ``input`` instead of ``messages``.
+
+    ``OpenAIResponsesLLM.call`` builds the params dict with ``input=...`` (the
+    Responses API convention), so the helper must derive the session id from
+    either key. Without this, the verification probe at startup — which has no
+    trace context — receives no session id and opencode-go rejects it with
+    ``MissingSessionID``.
+    """
+    request = {"input": [{"role": "user", "content": "Hi"}]}
+    apply_opencode_session(request, provider="openai-responses", base_url="https://opencode.ai/zen/go/v1")
+    assert OPENCODE_SESSION_HEADER in request["extra_headers"]
+
+
+def test_opencode_session_messages_key_takes_precedence_over_input():
+    """When both keys are present, ``messages`` wins.
+
+    The chat/completions path passes ``messages``; the Responses path passes
+    ``input``. The helper historically reads ``messages`` and that should not
+    regress just because the Responses path now also works.
+    """
+    request = {
+        "messages": [{"role": "system", "content": "from messages"}],
+        "input": [{"role": "system", "content": "from input"}],
+    }
+    apply_opencode_session(request, provider="openai-responses", base_url="https://opencode.ai/zen/go/v1")
+    assert OPENCODE_SESSION_HEADER in request["extra_headers"]
+
+
 # --------------------------------------------------------------------------- #
 # Host-based detection: the header is a host requirement, not a provider one.
 # --------------------------------------------------------------------------- #
