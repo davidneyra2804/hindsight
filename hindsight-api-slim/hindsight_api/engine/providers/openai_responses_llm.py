@@ -491,12 +491,9 @@ class OpenAIResponsesLLM(LLMInterface):
                 params["text"] = {"format": {"type": "json_object"}}
 
         apply_bank_attribution(params)
-        # opencode-go's /v1/responses endpoint requires x-opencode-session
-        # the same way /v1/chat/completions does (#4071). Host-based detection
-        # means a provider="openai-responses" deployment pointing at
-        # base_url=https://opencode.ai/zen/go/v1 (e.g. muse-spark-1.3-contributor)
-        # gets the header without operator config gymnastics.
-        apply_opencode_session(params, provider=self.provider, base_url=self.base_url)
+        # opencode-go's /v1/responses requires x-opencode-session the same way
+        # /v1/chat/completions does (#4071); the host check inside decides.
+        apply_opencode_session(params, base_url=self.base_url)
 
         def parse(response: Any) -> Any:
             self._raise_if_truncated(response)
@@ -596,10 +593,7 @@ class OpenAIResponsesLLM(LLMInterface):
             params["extra_body"] = {**self._config_extra_body}
 
         apply_bank_attribution(params)
-        # Mirror the call() path: opencode-go's Responses endpoint requires
-        # x-opencode-session whenever the host is opencode.ai, regardless of the
-        # configured provider name.
-        apply_opencode_session(params, provider=self.provider, base_url=self.base_url)
+        apply_opencode_session(params, base_url=self.base_url)
 
         def parse(response: Any) -> LLMToolCallResult:
             self._raise_if_truncated(response)

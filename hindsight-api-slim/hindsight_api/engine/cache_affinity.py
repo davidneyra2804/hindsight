@@ -164,12 +164,7 @@ def cache_affinity_id(messages: Any) -> str | None:
     return _first_message_fingerprint(messages)
 
 
-def apply_opencode_session(
-    request: dict[str, Any],
-    *,
-    provider: str | None = None,
-    base_url: str | None = None,
-) -> None:
+def apply_opencode_session(request: dict[str, Any], *, base_url: str | None) -> None:
     """Add OpenCode Go's conversation-grouping header to ``request`` in place.
 
     OpenCode Go asks third-party clients to send ``x-opencode-session`` so
@@ -186,11 +181,13 @@ def apply_opencode_session(
 
     Detection is host-based, mirroring how ``resolve_cache_affinity`` handles
     the xAI / native-OpenAI hosts (the same pattern already documented in this
-    file): the legacy ``provider`` argument is accepted for back-compat but the
-    host match on ``base_url`` is the source of truth. ``provider`` alone is
-    never enough — a provider name without a host cannot tell us whether the
-    request actually targets opencode-go or a same-named proxy that does not
-    require the header.
+    file). It previously keyed on ``provider == "opencode-go"``, which missed
+    every deployment that reaches the same backend under another provider name:
+    ``openai-responses`` for /v1/responses and ``anthropic`` for /v1/messages.
+    Keying on the name is also wrong in the other direction — it cannot tell
+    opencode-go apart from a same-named proxy that does not want the header.
+    The ``opencode-go`` provider sets this base URL itself (see
+    ``OpenAICompatibleLLM.__init__``), so it stays covered.
 
     The value is the operation-scoped id from :func:`cache_affinity_id`, so every
     LLM call of one retain/reflect/consolidation run shares it — including the
@@ -202,8 +199,7 @@ def apply_opencode_session(
     the request goes out unchanged.
     """
     hostname = (urlparse(base_url).hostname or "") if base_url else ""
-    host_matches = bool(hostname) and any(_host_matches(hostname, domain) for domain in _OPENCODE_DOMAINS)
-    if not host_matches:
+    if not any(_host_matches(hostname, domain) for domain in _OPENCODE_DOMAINS):
         return
     session_id = cache_affinity_id(request.get("messages"))
     if session_id is None:

@@ -342,10 +342,9 @@ class AnthropicLLM(LLMInterface):
         if self._extra_body:
             call_params["extra_body"] = self._extra_body
 
-        # opencode-go's /v1/messages endpoint requires x-opencode-session (#4071).
-        # Host-based detection keeps the Anthropic path covered when an operator
-        # points the provider at opencode.ai (e.g. minimax-m3 / qwen3.x / union-alpha).
-        apply_opencode_session(call_params, provider=self.provider, base_url=self.base_url)
+        # opencode-go's /v1/messages requires x-opencode-session (#4071), reached
+        # via provider=anthropic + an opencode.ai base URL; the host check decides.
+        apply_opencode_session(call_params, base_url=self.base_url)
 
         last_exception = None
 
@@ -613,9 +612,7 @@ class AnthropicLLM(LLMInterface):
         if self._extra_body:
             call_params["extra_body"] = self._extra_body
 
-        # Mirror the call() path: opencode-go's /v1/messages endpoint requires
-        # x-opencode-session whenever the host is opencode.ai.
-        apply_opencode_session(call_params, provider=self.provider, base_url=self.base_url)
+        apply_opencode_session(call_params, base_url=self.base_url)
 
         last_exception = None
         for attempt in range(max_retries + 1):

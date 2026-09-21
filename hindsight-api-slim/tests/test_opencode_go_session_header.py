@@ -8,7 +8,7 @@ asserting on a freshly minted uuid.
 
 Three request shapes coexist on opencode-go (``/v1/chat/completions``,
 ``/v1/responses``, ``/v1/messages``), and the header is required by the host on
-all three — the provider-name keying the older version of this module used
+all three — the provider-name check the header helper used to apply
 missed the Responses path entirely (so a Docker deployment of
 ``provider=openai-responses`` + ``base_url=https://opencode.ai/zen/go/v1`` +
 ``model=muse-spark-1.3-contributor`` was rejected by the backend). The host-based
@@ -17,7 +17,7 @@ detection exercised here covers every code path that talks to opencode.ai.
 
 from contextlib import contextmanager
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import BaseModel
@@ -31,6 +31,7 @@ from hindsight_api.engine.llm_trace import (
     reset_trace_context,
     set_trace_context,
 )
+from hindsight_api.engine.providers.anthropic_llm import AnthropicLLM
 from hindsight_api.engine.providers.openai_compatible_llm import OpenAICompatibleLLM
 from hindsight_api.engine.providers.openai_responses_llm import OpenAIResponsesLLM
 
@@ -219,21 +220,21 @@ def test_caller_supplied_header_wins():
         "messages": [{"role": "user", "content": "Hi"}],
         "extra_headers": {OPENCODE_SESSION_HEADER: "operator-chosen-id"},
     }
-    apply_opencode_session(request, provider="opencode-go", base_url="https://opencode.ai/zen/go/v1")
+    apply_opencode_session(request, base_url="https://opencode.ai/zen/go/v1")
     assert request["extra_headers"][OPENCODE_SESSION_HEADER] == "operator-chosen-id"
 
 
 def test_untraced_call_still_sends_a_header():
     """Outside a traced context the id falls back to a message fingerprint."""
     request = {"messages": [{"role": "system", "content": "You are a helper."}]}
-    apply_opencode_session(request, provider="opencode-go", base_url="https://opencode.ai/zen/go/v1")
+    apply_opencode_session(request, base_url="https://opencode.ai/zen/go/v1")
     assert request["extra_headers"][OPENCODE_SESSION_HEADER]
 
 
 def test_underivable_id_leaves_the_request_unchanged():
     """Fail-open: a malformed message list must not add a header or raise."""
     request: dict = {"messages": "not-a-list"}
-    apply_opencode_session(request, provider="opencode-go", base_url="https://opencode.ai/zen/go/v1")
+    apply_opencode_session(request, base_url="https://opencode.ai/zen/go/v1")
     assert "extra_headers" not in request
 
 
@@ -250,8 +251,8 @@ def test_underivable_id_leaves_the_request_unchanged():
         "https://opencode.ai/zen/go/v1/messages",
     ],
 )
-def test_opencode_host_triggers_header_regardless_of_provider_name(base_url):
-    """Any provider name targeting opencode.ai must inject the header.
+def test_opencode_host_triggers_the_header(base_url):
+    """Any provider targeting opencode.ai must inject the header.
 
     Regression for the Docker config
     ``provider=openai-responses`` + ``base_url=https://opencode.ai/zen/go/v1``
@@ -259,7 +260,7 @@ def test_opencode_host_triggers_header_regardless_of_provider_name(base_url):
     provider-name-keyed guard silently skipped.
     """
     request = {"messages": [{"role": "user", "content": "Hi"}]}
-    apply_opencode_session(request, provider="openai-responses", base_url=base_url)
+    apply_opencode_session(request, base_url=base_url)
     assert OPENCODE_SESSION_HEADER in request["extra_headers"]
 
 
@@ -270,13 +271,15 @@ def test_opencode_host_triggers_header_regardless_of_provider_name(base_url):
         "https://api.anthropic.com",
         "https://api.deepseek.com",
         "https://api.minimax.io/v1",
+        # Native OpenAI/Anthropic: no base URL configured at all.
         "",
+        None,
     ],
 )
 def test_non_opencode_host_does_not_inject_the_header(base_url):
     """Hosts other than opencode.ai must never carry the header."""
     request = {"messages": [{"role": "user", "content": "Hi"}]}
-    apply_opencode_session(request, provider="opencode-go", base_url=base_url or None)
+    apply_opencode_session(request, base_url=base_url)
     assert "extra_headers" not in request
 
 
@@ -288,7 +291,7 @@ def test_host_suffix_must_match_exact_or_parent_domain():
     against this. ``hostname`` for that URL is ``evil-opencode.ai`` itself.
     """
     request = {"messages": [{"role": "user", "content": "Hi"}]}
-    apply_opencode_session(request, provider="opencode-go", base_url="https://evil-opencode.ai")
+    apply_opencode_session(request, base_url="https://evil-opencode.ai")
     assert "extra_headers" not in request
 
 
@@ -406,10 +409,6 @@ async def test_anthropic_sends_session_header_when_targeting_opencode():
     opencode-go's /v1/messages endpoint serves minimax-m3, qwen3.x and
     union-alpha. Without the header the backend rejects the request.
     """
-    from unittest.mock import MagicMock
-
-    from hindsight_api.engine.providers.anthropic_llm import AnthropicLLM
-
     with patch("anthropic.AsyncAnthropic") as client_cls:
         client_cls.return_value = MagicMock()
         llm = AnthropicLLM(
@@ -436,10 +435,6 @@ async def test_anthropic_sends_session_header_when_targeting_opencode():
 
 @pytest.mark.asyncio
 async def test_anthropic_does_not_send_header_against_native_anthropic():
-    from unittest.mock import MagicMock
-
-    from hindsight_api.engine.providers.anthropic_llm import AnthropicLLM
-
     with patch("anthropic.AsyncAnthropic") as client_cls:
         client_cls.return_value = MagicMock()
         llm = AnthropicLLM(
